@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>مخطط رحلة بحرية – موانئ العالم</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<style>
+:root{--bg:#f4f6f5;--card:#fff;--tx:#1b2b26;--mut:#5b6b65;--pri:#1f4e3d;--bd:#d5ddd9;--warn:#b42318}
+@media (prefers-color-scheme:dark){:root{--bg:#121a17;--card:#1c2723;--tx:#e8efec;--mut:#9fb0a9;--pri:#5fbf9a;--bd:#34443e;--warn:#ff8a7a}}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;background:var(--bg);color:var(--tx);padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+header{background:#1f4e3d;color:#fff;padding:12px 14px;font-weight:700;font-size:17px}
+.warn{margin:10px 12px 0;padding:9px 11px;border:1px solid var(--warn);border-radius:10px;color:var(--warn);font-size:12.5px;line-height:1.5}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;margin:10px 12px;padding:12px}
+label{display:block;font-size:13px;color:var(--mut);margin:8px 0 3px}
+input,button{font:inherit;width:100%;padding:11px;border-radius:10px;border:1px solid var(--bd);background:var(--bg);color:var(--tx)}
+button{background:var(--pri);color:#fff;border:0;font-weight:700;margin-top:12px}
+button:disabled{opacity:.6}
+.row{display:flex;gap:8px}.row>div{flex:1}
+.pw{position:relative}
+.sug{position:absolute;z-index:1000;inset-inline:0;top:100%;background:var(--card);border:1px solid var(--bd);border-radius:10px;max-height:240px;overflow:auto;display:none;box-shadow:0 6px 18px rgba(0,0,0,.18)}
+.sug div{padding:10px;border-bottom:1px solid var(--bd);font-size:14px}
+.sug div small{color:var(--mut);display:block}
+.ok{color:var(--pri);font-size:12.5px;margin-top:4px;min-height:1em}
+#map{height:46vh;min-height:300px;margin:10px 12px;border-radius:12px;border:1px solid var(--bd)}
+.big{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.k{background:var(--bg);border-radius:10px;padding:9px;text-align:center}
+.k b{display:block;font-size:17px;margin-top:2px}.k span{font-size:12px;color:var(--mut)}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{padding:6px 4px;border-bottom:1px solid var(--bd);text-align:center}
+th{color:var(--mut);font-weight:600}td:first-child,th:first-child{text-align:right}
+.scroll{overflow-x:auto}
+.note{font-size:12px;color:var(--mut);line-height:1.6}
+#msg{color:var(--warn);font-size:13px;margin-top:8px;min-height:1em}
+.info td{text-align:right;border-bottom:1px dashed var(--bd)}.info td:first-child{color:var(--mut);width:42%}
+h4{margin:14px 0 6px}
+</style>
+</head>
+<body>
+<header>⚓ مخطط رحلة بحرية – موانئ العالم</header>
+<div class="warn">للتخطيط المبدئي فقط – المسار تقريبي (للعرض والتخطيط وليس للملاحة)، وبيانات الموانئ من نسخة قديمة (2017) ورموزها بترميز NGA. لا يغني عن الخرائط الملاحية الرسمية ولا عن حكم الربّان.</div>
+
+<div class="card">
+  <label>ميناء الانطلاق (اكتب اسمه بالإنجليزي)</label>
+  <div class="pw"><input id="from" placeholder="مثال: AQABA" autocomplete="off"><div class="sug" id="sug-from"></div></div>
+  <div class="ok" id="ok-from"></div>
+  <label>ميناء الوصول</label>
+  <div class="pw"><input id="to" placeholder="مثال: JEDDAH" autocomplete="off"><div class="sug" id="sug-to"></div></div>
+  <div class="ok" id="ok-to"></div>
+  <div class="row">
+    <div><label>السرعة (عقدة)</label><input id="speed" type="number" inputmode="decimal" value="12" min="0.5" step="0.5"></div>
+    <div><label>وقت الانطلاق</label><input id="start" type="datetime-local"></div>
+  </div>
+  <label>عرض الإحداثيات كل (ميل بحري)</label>
+  <input id="step" type="number" inputmode="decimal" value="100" min="1" step="10">
+  <button id="go">احسب المسار</button>
+  <div id="msg"></div>
+  <p class="note">اكتب جزءاً من الاسم واختر من القائمة. ممكن تكتب إحداثيات بدل الاسم، مثال: <b dir="ltr">29.5, 35.0</b></p>
+</div>
+
+<div id="map"></div>
+
+<div id="res" class="card" style="display:none">
+  <div class="big">
+    <div class="k"><span>المسافة (ميل بحري)</span><b id="nm">–</b></div>
+    <div class="k"><span>المسافة (كم)</span><b id="km">–</b></div>
+    <div class="k"><span>مدة الرحلة</span><b id="dur">–</b></div>
+    <div class="k"><span>الوصول المتوقع</span><b id="eta" style="font-size:14px">–</b></div>
+  </div>
+  <div id="engine" class="note" style="margin-top:8px"></div>
+  <h4>معلومات الموانئ</h4>
+  <div id="pinfo"></div>
+  <h4>نقاط المسار (Waypoints)</h4>
+  <div class="scroll"><table id="wp"><thead><tr><th>#</th><th>خط العرض</th><th>خط الطول</th><th>ميل</th><th>الوقت</th></tr></thead><tbody></tbody></table></div>
+  <p class="note">النقاط الرئيسية فقط (المسار المرسوم أدق منها)، فلا تتبّع خطوطاً مستقيمة بينها.</p>
+  <h4>إحداثيات كل <span id="stepLbl">100</span> ميل</h4>
+  <div class="scroll"><table id="sp"><thead><tr><th>ميل</th><th>خط العرض</th><th>خط الطول</th><th>الوقت</th></tr></thead><tbody></tbody></table></div>
+  <p class="note">الوقت بتوقيت جهازك. الإحداثيات بالدرجات والدقائق.</p>
+</div>
+
+<div class="card note">الخريطة من OpenStreetMap وعلامات الملاحة من OpenSeaMap (غير رسمية). بيانات الموانئ: NGA World Port Index. المسار العالمي: مكتبة searoute-js. تحتاج اتصال إنترنت.</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+const LOCAL = {"N": {"AQABA": ["الأردن – العقبة", 29.52, 35.0], "YANBU": ["السعودية – ينبع", 24.09, 38.05], "JEDDAH": ["السعودية – جدة", 21.48, 39.15], "DAMMAM": ["السعودية – الدمام", 26.48, 50.2], "PSUDAN": ["السودان – بورتسودان", 19.62, 37.22], "SUEZ": ["مصر – السويس", 29.95, 32.55], "PSAID": ["مصر – بورسعيد", 31.26, 32.31], "ALEX": ["مصر – الإسكندرية", 31.2, 29.88], "BEIRUT": ["لبنان – بيروت", 33.9, 35.51], "LATAKIA": ["سوريا – اللاذقية", 35.52, 35.77], "TARTOUS": ["سوريا – طرطوس", 34.914, 35.872], "VALENCIA": ["إسبانيا – فالنسيا", 39.45, -0.32], "TANGER": ["المغرب – طنجة المتوسط", 35.89, -5.5], "CASA": ["المغرب – الدار البيضاء", 33.6, -7.62], "NYC": ["أمريكا – نيويورك (مدخل الميناء)", 40.38, -73.75], "ROTT": ["هولندا – روتردام", 51.97, 3.98], "DJIB": ["جيبوتي – جيبوتي", 11.6, 43.15], "ADEN": ["اليمن – عدن", 12.78, 44.98], "SALALAH": ["عُمان – صلالة", 16.95, 54.0], "MUSCAT": ["عُمان – مسقط", 23.63, 58.6], "DUBAI": ["الإمارات – جبل علي (دبي)", 25.01, 55.06], "DOHA": ["قطر – الدوحة", 25.3, 51.58], "KUWAIT": ["الكويت – الكويت", 29.35, 47.95], "KARACHI": ["باكستان – كراتشي", 24.8, 66.97], "MUMBAI": ["الهند – مومباي", 18.95, 72.85], "COLOMBO": ["سريلانكا – كولومبو", 6.95, 79.85], "SING": ["سنغافورة – سنغافورة", 1.24, 103.78], "MOMBASA": ["كينيا – مومباسا", -4.06, 39.67], "A0": ["رأس خليج العقبة", 29.25, 34.82], "A1": ["وسط خليج العقبة", 28.5, 34.65], "A2": ["مدخل خليج العقبة (تيران)", 27.6, 34.85], "RS1": ["البحر الأحمر – شمال", 27.0, 34.7], "RS2": ["البحر الأحمر 25°", 25.0, 35.8], "RS3": ["البحر الأحمر 23°", 23.0, 37.0], "RS4": ["البحر الأحمر 21°", 21.0, 38.2], "RS5": ["البحر الأحمر 19°", 19.0, 38.9], "RS6": ["البحر الأحمر 17°", 17.0, 40.1], "RS7": ["البحر الأحمر 15°", 15.2, 41.4], "RS8": ["جنوب البحر الأحمر", 13.6, 42.3], "BAB": ["مضيق باب المندب", 12.58, 43.35], "GS3": ["مدخل خليج السويس", 27.75, 33.9], "GS2": ["خليج السويس – وسط", 28.0, 33.5], "GS1": ["خليج السويس – جنوب السويس", 29.0, 32.9], "GS0": ["خليج السويس – شمال", 29.6, 32.5], "CN1": ["قناة السويس – الإسماعيلية", 30.6, 32.3], "CN2": ["قناة السويس – البحيرات المرة", 30.3, 32.4], "M_PS": ["مدخل بورسعيد", 31.6, 32.4], "M_NIL": ["شمال دلتا النيل", 32.0, 31.0], "M_AL": ["مدخل الإسكندرية", 31.55, 29.85], "M_E1": ["شرق المتوسط (جنوب قبرص)", 33.8, 34.0], "M_BEI": ["مدخل بيروت", 33.95, 35.2], "M_LAT": ["مدخل اللاذقية", 35.6, 35.55], "M_TAR": ["مدخل طرطوس", 34.95, 35.6], "M_E4": ["شرق المتوسط 30°ق", 34.0, 30.0], "M_E5": ["جنوب جزيرة كريت (شرق)", 34.3, 26.5], "M_E6": ["جنوب جزيرة كريت (غرب)", 34.2, 24.0], "I1": ["وسط المتوسط (شرق)", 34.5, 20.0], "I2": ["جنوب مالطا (شرق)", 34.8, 16.0], "I3": ["جنوب مالطا (غرب)", 34.6, 13.6], "I4": ["شرق تونس", 35.3, 11.9], "I5": ["شمال رأس بون (تونس)", 37.4, 11.5], "I6": ["شمال تونس / جنوب سردينيا", 38.0, 9.5], "I7": ["غرب المتوسط – شمال الجزائر", 38.0, 6.0], "I8": ["جنوب جزر البليار", 38.0, 3.0], "I9": ["شرق إسبانيا", 38.2, 0.8], "VAL_AP": ["مدخل فالنسيا", 39.5, 0.1], "I10": ["جنوب شرق إسبانيا", 37.4, -0.2], "I11": ["بحر البوران (شرق)", 36.2, -2.5], "I12": ["بحر البوران (غرب)", 36.0, -4.5], "GIB": ["مضيق جبل طارق", 35.92, -5.7], "ATL1": ["خليج قادس", 36.0, -6.6], "CAS_AP": ["مدخل الدار البيضاء", 33.8, -7.9], "ATL_SV": ["جنوب غرب البرتغال", 36.5, -9.6], "P1": ["غرب البرتغال", 39.0, -10.5], "P2": ["غرب إسبانيا", 43.2, -10.2], "B1": ["خليج بسكاي", 45.5, -6.0], "USH": ["غرب أوشانت (فرنسا)", 48.8, -6.5], "C1": ["مدخل القنال الإنجليزي", 49.65, -4.5], "C2": ["وسط القنال الإنجليزي", 50.1, -1.0], "C3": ["مضيق دوفر", 51.0, 1.55], "C4": ["بحر الشمال – جنوب", 51.7, 2.5], "AT1": ["المحيط الأطلسي (الأزور جنوباً)", 35.5, -30.0], "AT2": ["الأطلسي – غرب", 37.5, -50.0], "AT3": ["جنوب شرق نانتكت", 39.5, -66.0], "AN1": ["الأطلسي الشمالي – شرق", 46.5, -30.0], "AN2": ["الأطلسي الشمالي – غرب", 42.5, -50.0], "GA1": ["خليج عدن (غرب)", 12.35, 44.2], "DJI_AP": ["مدخل خليج تاجورة", 11.8, 43.7], "GA2": ["خليج عدن (وسط)", 12.0, 47.5], "GA3": ["شمال سقطرى", 14.0, 52.5], "SO1": ["شرق سقطرى", 13.3, 55.8], "SO2": ["بحر العرب – جنوب", 8.0, 57.0], "SO3": ["شرق الصومال", 0.0, 50.0], "SO4": ["شرق كينيا", -3.0, 43.0], "MOM_AP": ["مدخل مومباسا", -4.0, 39.9], "AS_A": ["بحر العرب – غرب", 16.0, 60.0], "AS_B": ["بحر العرب – شمال", 20.0, 62.5], "AS_C": ["شرق رأس الحد", 23.0, 62.5], "GO1": ["خليج عمان (شرق)", 24.2, 60.5], "MUS_AP": ["مدخل مسقط", 23.9, 58.9], "GO4": ["خليج عمان (وسط)", 25.0, 58.3], "GO3": ["خليج عمان (غرب)", 26.0, 57.0], "HORM": ["مضيق هرمز", 26.6, 56.6], "GM": ["الخليج العربي – وسط", 26.4, 54.5], "DUB_AP": ["مدخل جبل علي", 25.3, 54.9], "Q1": ["شرق قطر", 26.3, 52.5], "Q2": ["شمال قطر", 27.0, 51.0], "DAM_AP": ["مدخل الدمام", 26.55, 50.55], "K1": ["شمال الخليج العربي", 28.7, 49.5], "KUW_AP": ["مدخل الكويت", 29.2, 48.4], "KAR_AP": ["مدخل كراتشي", 24.5, 66.7], "IND1": ["جنوب باكستان", 22.0, 67.5], "IND2": ["غرب الهند", 20.0, 70.5], "AS6": ["بحر العرب – شرق", 17.5, 68.0], "MUM_AP": ["مدخل مومباي", 18.8, 72.4], "IN3": ["غرب الهند – جنوب مومباي", 15.0, 71.8], "IN4": ["غرب الهند – ساحل كيرلا", 10.0, 74.0], "IN6": ["شمال المالديف", 10.0, 70.0], "IN5": ["جنوب غرب الهند", 7.5, 76.6], "COL_AP": ["مدخل كولومبو", 6.9, 79.6], "SG0": ["جنوب سريلانكا (غرب)", 5.7, 80.0], "SG1": ["جنوب سريلانكا (شرق)", 5.2, 81.5], "SG2": ["خليج البنغال – جنوب", 5.6, 88.0], "SG3": ["القناة الكبرى (نيكوبار)", 6.3, 94.2], "SG4": ["شمال سومطرة", 6.4, 95.3], "SG5": ["مدخل مضيق ملقا", 5.7, 97.5], "SG6": ["مضيق ملقا – شمال", 5.6, 98.5], "SG7": ["مضيق ملقا – وسط", 4.5, 99.8], "SG8": ["مضيق ملقا – جنوب", 2.9, 100.55], "SG9": ["مضيق ملقا (ملقا)", 1.85, 102.2], "SG10": ["مضيق سنغافورة – غرب", 1.3, 103.0], "SG11": ["مضيق سنغافورة", 1.14, 103.46]}, "E": [["AQABA", "A0"], ["A0", "A1"], ["A1", "A2"], ["A2", "RS1"], ["RS1", "RS2"], ["RS2", "RS3"], ["RS3", "RS4"], ["RS4", "RS5"], ["RS5", "RS6"], ["RS6", "RS7"], ["RS7", "RS8"], ["RS8", "BAB"], ["RS1", "GS3"], ["GS3", "GS2"], ["GS2", "GS1"], ["GS1", "GS0"], ["GS0", "SUEZ"], ["SUEZ", "CN2"], ["CN2", "CN1"], ["CN1", "PSAID"], ["PSAID", "M_PS"], ["YANBU", "RS2"], ["YANBU", "RS3"], ["JEDDAH", "RS4"], ["PSUDAN", "RS5"], ["M_PS", "M_NIL"], ["M_NIL", "M_AL"], ["M_AL", "ALEX"], ["M_PS", "M_E1"], ["M_AL", "M_E4"], ["M_E1", "M_BEI"], ["M_BEI", "BEIRUT"], ["M_E1", "M_LAT"], ["M_LAT", "LATAKIA"], ["M_LAT", "M_BEI"], ["M_LAT", "M_TAR"], ["M_TAR", "M_BEI"], ["M_TAR", "TARTOUS"], ["M_TAR", "BEIRUT"], ["M_E1", "M_E4"], ["M_E4", "M_E5"], ["M_E5", "M_E6"], ["M_E6", "I1"], ["I1", "I2"], ["I2", "I3"], ["I3", "I4"], ["I4", "I5"], ["I5", "I6"], ["I6", "I7"], ["I7", "I8"], ["I8", "I9"], ["I9", "VAL_AP"], ["VAL_AP", "VALENCIA"], ["I9", "I10"], ["I10", "I11"], ["I11", "I12"], ["I12", "GIB"], ["GIB", "TANGER"], ["GIB", "ATL1"], ["ATL1", "CAS_AP"], ["CAS_AP", "CASA"], ["ATL1", "ATL_SV"], ["ATL_SV", "P1"], ["P1", "P2"], ["P2", "B1"], ["B1", "USH"], ["USH", "C1"], ["C1", "C2"], ["C2", "C3"], ["C3", "C4"], ["C4", "ROTT"], ["ATL_SV", "AT1"], ["AT1", "AT2"], ["AT2", "AT3"], ["AT3", "NYC"], ["USH", "AN1"], ["AN1", "AN2"], ["AN2", "AT3"], ["BAB", "GA1"], ["GA1", "ADEN"], ["GA1", "DJI_AP"], ["DJI_AP", "DJIB"], ["GA1", "GA2"], ["GA2", "GA3"], ["GA3", "SALALAH"], ["GA3", "AS_A"], ["SALALAH", "AS_A"], ["GA3", "SO1"], ["SO1", "SO2"], ["SO2", "SO3"], ["SO3", "SO4"], ["SO4", "MOM_AP"], ["MOM_AP", "MOMBASA"], ["AS_A", "AS_B"], ["AS_B", "AS_C"], ["AS_C", "GO1"], ["GO1", "MUS_AP"], ["MUS_AP", "MUSCAT"], ["GO1", "GO4"], ["MUS_AP", "GO4"], ["GO4", "GO3"], ["GO3", "HORM"], ["HORM", "GM"], ["GM", "DUB_AP"], ["DUB_AP", "DUBAI"], ["GM", "Q1"], ["Q1", "DOHA"], ["Q1", "Q2"], ["Q2", "DAM_AP"], ["DAM_AP", "DAMMAM"], ["Q2", "K1"], ["K1", "KUW_AP"], ["KUW_AP", "KUWAIT"], ["GO1", "KAR_AP"], ["KAR_AP", "KARACHI"], ["KAR_AP", "IND1"], ["AS_C", "IND1"], ["IND1", "IND2"], ["IND2", "MUM_AP"], ["MUM_AP", "MUMBAI"], ["AS_A", "AS6"], ["AS6", "MUM_AP"], ["MUM_AP", "IN3"], ["IN3", "IN4"], ["IN4", "IN5"], ["AS_A", "IN6"], ["IN6", "IN5"], ["IN6", "IN4"], ["IN5", "COL_AP"], ["COL_AP", "COLOMBO"], ["COL_AP", "SG0"], ["SG0", "SG1"], ["SG1", "SG2"], ["SG2", "SG3"], ["SG3", "SG4"], ["SG4", "SG5"], ["SG5", "SG6"], ["SG6", "SG7"], ["SG7", "SG8"], ["SG8", "SG9"], ["SG9", "SG10"], ["SG10", "SG11"], ["SG11", "SING"]], "LP": [{"en": "AQABA", "ar": "الأردن – العقبة", "lat": 29.52, "lon": 35.0}, {"en": "YANBU", "ar": "السعودية – ينبع", "lat": 24.09, "lon": 38.05}, {"en": "JEDDAH", "ar": "السعودية – جدة", "lat": 21.48, "lon": 39.15}, {"en": "DAMMAM", "ar": "السعودية – الدمام", "lat": 26.48, "lon": 50.2}, {"en": "PORT SUDAN", "ar": "السودان – بورتسودان", "lat": 19.62, "lon": 37.22}, {"en": "SUEZ", "ar": "مصر – السويس", "lat": 29.95, "lon": 32.55}, {"en": "PORT SAID", "ar": "مصر – بورسعيد", "lat": 31.26, "lon": 32.31}, {"en": "ALEXANDRIA", "ar": "مصر – الإسكندرية", "lat": 31.2, "lon": 29.88}, {"en": "BEIRUT", "ar": "لبنان – بيروت", "lat": 33.9, "lon": 35.51}, {"en": "LATAKIA", "ar": "سوريا – اللاذقية", "lat": 35.52, "lon": 35.77}, {"en": "TARTOUS", "ar": "سوريا – طرطوس", "lat": 34.914, "lon": 35.872}, {"en": "VALENCIA", "ar": "إسبانيا – فالنسيا", "lat": 39.45, "lon": -0.32}, {"en": "TANGER MED", "ar": "المغرب – طنجة المتوسط", "lat": 35.89, "lon": -5.5}, {"en": "CASABLANCA", "ar": "المغرب – الدار البيضاء", "lat": 33.6, "lon": -7.62}, {"en": "NEW YORK", "ar": "أمريكا – نيويورك (مدخل الميناء)", "lat": 40.38, "lon": -73.75}, {"en": "ROTTERDAM", "ar": "هولندا – روتردام", "lat": 51.97, "lon": 3.98}, {"en": "DJIBOUTI", "ar": "جيبوتي – جيبوتي", "lat": 11.6, "lon": 43.15}, {"en": "ADEN", "ar": "اليمن – عدن", "lat": 12.78, "lon": 44.98}, {"en": "SALALAH", "ar": "عُمان – صلالة", "lat": 16.95, "lon": 54.0}, {"en": "MUSCAT", "ar": "عُمان – مسقط", "lat": 23.63, "lon": 58.6}, {"en": "JEBEL ALI (DUBAI)", "ar": "الإمارات – جبل علي (دبي)", "lat": 25.01, "lon": 55.06}, {"en": "DOHA", "ar": "قطر – الدوحة", "lat": 25.3, "lon": 51.58}, {"en": "KUWAIT", "ar": "الكويت – الكويت", "lat": 29.35, "lon": 47.95}, {"en": "KARACHI", "ar": "باكستان – كراتشي", "lat": 24.8, "lon": 66.97}, {"en": "MUMBAI", "ar": "الهند – مومباي", "lat": 18.95, "lon": 72.85}, {"en": "COLOMBO", "ar": "سريلانكا – كولومبو", "lat": 6.95, "lon": 79.85}, {"en": "SINGAPORE", "ar": "سنغافورة – سنغافورة", "lat": 1.24, "lon": 103.78}, {"en": "MOMBASA", "ar": "كينيا – مومباسا", "lat": -4.06, "lon": 39.67}]};
+const WPI='https://services2.arcgis.com/jUpNdisbWqRpMo35/ArcGIS/rest/services/WPI_Ports2017/FeatureServer/0/query';
+const R_NM=3440.065;
+/* ===== pure helpers ===== */
+function hav(a,b){const r=Math.PI/180,la1=a[0]*r,la2=b[0]*r,dla=(b[0]-a[0])*r,dlo=(b[1]-a[1])*r;
+  const h=Math.sin(dla/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin(dlo/2)**2;return 2*R_NM*Math.asin(Math.sqrt(h));}
+function cumulate(coords){ // coords: [[lon,lat],...]
+  const pts=coords.map(c=>({lat:c[1],lon:c[0],cum:0}));
+  for(let i=1;i<pts.length;i++) pts[i].cum=pts[i-1].cum+hav([pts[i-1].lat,pts[i-1].lon],[pts[i].lat,pts[i].lon]);
+  return pts;
+}
+function perp(p,a,b){ // planar perpendicular distance in degrees
+  const k=Math.cos((a.lat+b.lat)/2*Math.PI/180);
+  const x=(p.lon-a.lon)*k,y=p.lat-a.lat,dx=(b.lon-a.lon)*k,dy=b.lat-a.lat;
+  const L=dx*dx+dy*dy; if(L===0) return Math.hypot(x,y);
+  let t=(x*dx+y*dy)/L; t=Math.max(0,Math.min(1,t));
+  return Math.hypot(x-t*dx,y-t*dy);
+}
+function dp(pts,tol){
+  const keep=new Array(pts.length).fill(false); keep[0]=keep[pts.length-1]=true;
+  const st=[[0,pts.length-1]];
+  while(st.length){
+    const [s,e]=st.pop(); let md=0,mi=-1;
+    for(let i=s+1;i<e;i++){const d=perp(pts[i],pts[s],pts[e]); if(d>md){md=d;mi=i;}}
+    if(md>tol&&mi>0){keep[mi]=true;st.push([s,mi],[mi,e]);}
+  }
+  return pts.filter((_,i)=>keep[i]);
+}
+function mainWaypoints(pts,maxN){
+  let tol=0.03,out=dp(pts,tol);
+  while(out.length>maxN&&tol<5){tol*=1.4;out=dp(pts,tol);}
+  return out;
+}
+function samplePoints(pts,step){
+  const total=pts[pts.length-1].cum,out=[];
+  const at=d=>{for(let i=0;i<pts.length-1;i++){
+    if(pts[i].cum<=d&&d<=pts[i+1].cum){const seg=pts[i+1].cum-pts[i].cum,f=seg>0?(d-pts[i].cum)/seg:0;
+      return [pts[i].lat+f*(pts[i+1].lat-pts[i].lat),pts[i].lon+f*(pts[i+1].lon-pts[i].lon)];}}
+    return [pts[pts.length-1].lat,pts[pts.length-1].lon];};
+  for(let d=0;d<total;d+=step){const p=at(d);out.push({d,lat:p[0],lon:p[1]});}
+  out.push({d:total,lat:pts[pts.length-1].lat,lon:pts[pts.length-1].lon});
+  return out;
+}
+function dm(v,isLat){const h=isLat?(v>=0?'N':'S'):(v>=0?'E':'W');let a=Math.abs(v),deg=Math.floor(a),min=(a-deg)*60;
+  if(min>=59.95){deg+=1;min=0;}return String(deg).padStart(isLat?2:3,'0')+'°'+min.toFixed(1).padStart(4,'0')+"'"+h;}
+function parseCoord(s){const m=s.trim().match(/^(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)$/);
+  if(!m)return null;const la=+m[1],lo=+m[2];if(Math.abs(la)>90||Math.abs(lo)>180)return null;return [la,lo];}
+function wpiUrl(text){
+  const t=text.trim().toUpperCase().replace(/'/g,"''");
+  const q=new URLSearchParams({where:"UPPER(PORT_NAME) LIKE '%"+t+"%'",outFields:'*',returnGeometry:'false',
+    resultRecordCount:'12',orderByFields:'PORT_NAME',f:'json'});
+  return WPI+'?'+q.toString();
+}
+/* ===== local fallback router (limited regions) ===== */
+function localRoute(a,b){
+  const N=LOCAL.N,adj={};
+  for(const k in N)adj[k]=[];
+  for(const [x,y] of LOCAL.E){const d=hav([N[x][1],N[x][2]],[N[y][1],N[y][2]]);adj[x].push([y,d]);adj[y].push([x,d]);}
+  const snap=(p)=>{let best=null,bd=1e18;for(const k in N){const d=hav([p.lat,p.lon],[N[k][1],N[k][2]]);if(d<bd){bd=d;best=k;}}return [best,bd];};
+  const [sa,da]=snap(a),[sb,db]=snap(b);
+  if(da>300||db>300) return null;
+  const dist={},prev={},done=new Set();for(const k in adj)dist[k]=Infinity;dist[sa]=0;
+  while(true){let u=null,m=Infinity;for(const k in dist){if(!done.has(k)&&dist[k]<m){m=dist[k];u=k;}}
+    if(u===null||u===sb)break;done.add(u);for(const [v,w] of adj[u]){if(dist[u]+w<dist[v]){dist[v]=dist[u]+w;prev[v]=u;}}}
+  if(dist[sb]===Infinity)return null;
+  const path=[];let c=sb;while(c!==undefined){path.unshift(c);c=prev[c];}
+  const coords=[[a.lon,a.lat],...path.map(id=>[N[id][2],N[id][1]]),[b.lon,b.lat]];
+  return {coords,snapNM:Math.max(da,db)};
+}
+</script>
+<script>
+/* ===== UI ===== */
+function pad(n){return String(n).padStart(2,'0');}
+function fmt(d){return d.getFullYear()+'/'+pad(d.getMonth()+1)+'/'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes());}
+const $=id=>document.getElementById(id);
+const sel={from:null,to:null};
+const FIELDS=[['COUNTRY','الدولة'],['HARBORSIZE','حجم الميناء (رمز)'],['HARBORTYPE','نوع الميناء (رمز)'],['SHELTER','الحماية (رمز)'],
+ ['CHAN_DEPTH','عمق القناة'],['ANCH_DEPTH','عمق المرسى'],['CARGODEPTH','عمق أرصفة الشحن'],['OIL_DEPTH','عمق أرصفة النفط'],
+ ['TIDE_RANGE','مدى المد'],['MAX_VESSEL','أكبر سفينة (رمز)'],['PILOT_REQD','إرشاد إلزامي'],['PILOTAVAIL','إرشاد متوفر'],
+ ['TUG_ASSIST','قاطرات'],['COMM_VHF','VHF'],['COMM_PHONE','هاتف'],['PORTOFENTR','ميناء دخول'],['CHART','الخريطة'],['PUB','نشرة الإبحار']];
+const st=$('start');const now=new Date();now.setMinutes(0,0,0);now.setHours(now.getHours()+1);
+st.value=now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate())+'T'+pad(now.getHours())+':00';
+
+const map=L.map('map',{worldCopyJump:true}).setView([25,45],4);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'© OpenStreetMap'}).addTo(map);
+L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',{maxZoom:18,attribution:'© OpenSeaMap'}).addTo(map);
+let layer=L.layerGroup().addTo(map);
+
+function setupSearch(key){
+  const inp=$(key),box=$('sug-'+key),ok=$('ok-'+key);let timer=null,seq=0;
+  const choose=(o)=>{sel[key]=o;inp.value=o.name+(o.country?' – '+o.country:'');ok.textContent='✓ تم اختيار الميناء'+(o.attrs?'':' (من القائمة المحلية، بدون معلومات NGA)');box.style.display='none';};
+  const addItem=(title,sub,o)=>{const d=document.createElement('div');d.innerHTML=title+'<small>'+sub+'</small>';d.onclick=()=>choose(o);box.appendChild(d);};
+  const addNote=(t)=>{const d=document.createElement('div');d.style.color='var(--warn)';d.style.fontSize='12.5px';d.textContent=t;box.appendChild(d);};
+  inp.addEventListener('input',()=>{
+    sel[key]=null;ok.textContent='';clearTimeout(timer);
+    const t=inp.value.trim();
+    if(t.length<2||parseCoord(t)){box.style.display='none';return;}
+    timer=setTimeout(async()=>{
+      const my=++seq;let wpi=[],err='';
+      try{
+        const r=await fetch(wpiUrl(t));
+        if(!r.ok)throw new Error('HTTP '+r.status);
+        const j=await r.json();
+        if(j.error)throw new Error(j.error.message||'خطأ من الخدمة');
+        wpi=j.features||[];
+      }catch(e){err=String(e&&e.message||e);}
+      if(my!==seq)return;
+      box.innerHTML='';
+      const tl=t.toLowerCase();
+      const loc=LOCAL.LP.filter(p=>p.en.toLowerCase().includes(tl)||p.ar.includes(t));
+      wpi.forEach(f=>{const a=f.attributes;
+        addItem(a.PORT_NAME,(a.COUNTRY||'')+' – NGA',{name:a.PORT_NAME,country:a.COUNTRY,lat:a.LATITUDE,lon:a.LONGITUDE,attrs:a});});
+      if(err)addNote('تعذّر الاتصال بقاعدة NGA ('+err+'). إذا فتحت الصفحة من داخل Claude فالاتصال ممنوع هناك – افتحها من رابط على متصفح التلفون.');
+      else if(!wpi.length)addNote('قاعدة NGA ما رجّعت نتائج لهالاسم.');
+      loc.forEach(p=>addItem(p.en,p.ar+' – قائمة محلية',{name:p.en,country:p.ar,lat:p.lat,lon:p.lon,attrs:null}));
+      if(!wpi.length&&!loc.length&&!err)addNote('جرّب جزءاً أقصر من الاسم.');
+      box.style.display='block';
+    },350);
+  });
+  document.addEventListener('click',e=>{if(!box.contains(e.target)&&e.target!==inp)box.style.display='none';});
+}
+setupSearch('from');setupSearch('to');
+
+function getPoint(key,text){
+  if(sel[key])return sel[key];
+  const c=parseCoord(text);
+  if(c)return {name:'نقطة '+c[0].toFixed(3)+', '+c[1].toFixed(3),country:'',lat:c[0],lon:c[1],attrs:null,custom:true};
+  return null;
+}
+let srFn;
+async function loadSearoute(){
+  if(srFn!==undefined)return srFn;
+  try{
+    const mod=await import('https://cdn.jsdelivr.net/npm/searoute-js/+esm');
+    let fn=mod.default;
+    if(fn&&typeof fn!=='function'&&typeof fn.default==='function')fn=fn.default;
+    if(typeof fn!=='function'&&typeof mod.searoute==='function')fn=mod.searoute;
+    srFn=(typeof fn==='function')?fn:null;
+  }catch(e){console.error(e);srFn=null;}
+  return srFn;
+}
+const pt=(lon,lat)=>({type:'Feature',properties:{},geometry:{type:'Point',coordinates:[lon,lat]}});
+
+function infoHtml(p,label){
+  let h='<b>'+label+': '+p.name+(p.country?' – '+p.country:'')+'</b>';
+  h+='<table class="info"><tr><td>الموقع</td><td dir="ltr">'+dm(p.lat,true)+' '+dm(p.lon,false)+'</td></tr>';
+  if(p.attrs){FIELDS.forEach(([k,l])=>{const v=p.attrs[k];if(v!==null&&v!==undefined&&String(v).trim()!==''&&k!=='COUNTRY')h+='<tr><td>'+l+'</td><td dir="ltr">'+v+'</td></tr>';});}
+  else h+='<tr><td colspan="2">نقطة مخصصة (بدون بيانات ميناء)</td></tr>';
+  return h+'</table>';
+}
+
+$('go').onclick=async()=>{
+  const msg=$('msg');msg.textContent='';
+  const a=getPoint('from',$('from').value),b=getPoint('to',$('to').value);
+  if(!a||!b){msg.textContent='اختر الميناءين من القائمة (اكتب جزء من الاسم بالإنجليزي) أو اكتب إحداثيات.';return;}
+  const spd=parseFloat($('speed').value);if(!(spd>0)){msg.textContent='اكتب سرعة صحيحة بالعقدة.';return;}
+  if(hav([a.lat,a.lon],[b.lat,b.lon])<0.5){msg.textContent='النقطتان متقاربتان جداً.';return;}
+  const btn=$('go');btn.disabled=true;btn.textContent='جاري الحساب...';
+  let coords=null,engine='',warn='';
+  try{
+    const fn=await loadSearoute();
+    if(fn){
+      try{
+        const r=fn(pt(a.lon,a.lat),pt(b.lon,b.lat));
+        let c=r&&r.geometry&&r.geometry.coordinates;
+        if(c&&c.length>1){
+          if(hav([a.lat,a.lon],[c[0][1],c[0][0]])>1)c=[[a.lon,a.lat],...c];
+          if(hav([b.lat,b.lon],[c[c.length-1][1],c[c.length-1][0]])>1)c=[...c,[b.lon,b.lat]];
+          coords=c;engine='المسار: مكتبة searoute-js (شبكة ممرات بحرية عالمية).';
+        }
+      }catch(e){console.error(e);}
+    }
+    if(!coords){
+      const lr=localRoute(a,b);
+      if(lr){coords=lr.coords;engine='تعذّر استخدام مكتبة المسارات العالمية، فاستخدمت المسار المحلي المحدود (البحر الأحمر والمتوسط والخليج والمحيط الهندي وشمال الأطلسي).';
+        if(lr.snapNM>50)warn='تنبيه: أحد الميناءين بعيد عن نقاط المسار المحلية، فالجزء الأول/الأخير خط مستقيم وقد يعبر اليابسة.';}
+    }
+    if(!coords){msg.textContent='ما قدرت أحسب مسار بحري بين الميناءين.';return;}
+    const pts=cumulate(coords),total=pts[pts.length-1].cum;
+    const start=new Date(st.value||Date.now()),hours=total/spd,eta=new Date(start.getTime()+hours*3600e3);
+    layer.clearLayers();
+    const ll=pts.map(p=>[p.lat,p.lon]);
+    L.polyline(ll,{color:'#1f77b4',weight:4}).addTo(layer);
+    const wps=mainWaypoints(pts,60);
+    wps.forEach((p,i)=>{const end=i===0||i===wps.length-1;
+      L.circleMarker([p.lat,p.lon],{radius:end?9:4,color:i===0?'#2ca02c':(end?'#d62728':'#1f77b4'),fillOpacity:.9})
+        .bindPopup((i===0?'الانطلاق':end?'الوصول':'نقطة '+i)+'<br>'+dm(p.lat,true)+' '+dm(p.lon,false)).addTo(layer);});
+    map.fitBounds(L.latLngBounds(ll).pad(0.15));
+    $('res').style.display='block';
+    $('nm').textContent=Math.round(total).toLocaleString('en');
+    $('km').textContent=Math.round(total*1.852).toLocaleString('en');
+    $('dur').textContent=Math.floor(hours/24)+' يوم '+Math.round(hours%24)+' ساعة';
+    $('eta').textContent=fmt(eta);
+    $('engine').textContent=engine;
+    $('pinfo').innerHTML=infoHtml(a,'الانطلاق')+'<br>'+infoHtml(b,'الوصول')+'<p class="note">الأعماق والرموز بحسب نشرة NGA رقم 150 (نسخة 2017) – راجعها للتفاصيل والوحدات.</p>';
+    const tb=document.querySelector('#wp tbody');tb.innerHTML='';
+    wps.forEach((p,i)=>{const t=new Date(start.getTime()+(p.cum/spd)*3600e3),tr=document.createElement('tr');
+      tr.innerHTML='<td>'+i+'</td><td dir="ltr">'+dm(p.lat,true)+'</td><td dir="ltr">'+dm(p.lon,false)+'</td><td>'+Math.round(p.cum)+'</td><td>'+fmt(t).slice(5)+'</td>';tb.appendChild(tr);});
+    const step=Math.max(1,parseFloat($('step').value)||100);$('stepLbl').textContent=step;
+    const tb2=document.querySelector('#sp tbody');tb2.innerHTML='';
+    samplePoints(pts,step).forEach(p=>{const t=new Date(start.getTime()+(p.d/spd)*3600e3),tr=document.createElement('tr');
+      tr.innerHTML='<td>'+Math.round(p.d)+'</td><td dir="ltr">'+dm(p.lat,true)+'</td><td dir="ltr">'+dm(p.lon,false)+'</td><td>'+fmt(t).slice(5)+'</td>';tb2.appendChild(tr);
+      L.circleMarker([p.lat,p.lon],{radius:3,color:'#9467bd',fillOpacity:1}).addTo(layer);});
+    if(warn)msg.textContent=warn;
+    $('res').scrollIntoView({behavior:'smooth'});
+  }finally{btn.disabled=false;btn.textContent='احسب المسار';}
+};
+</script>
+</body>
+</html>
